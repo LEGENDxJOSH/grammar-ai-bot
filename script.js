@@ -1,227 +1,125 @@
 javascript:(async function(){
 
 // =====================================
-// OPENAI API KEY (IMPORTANT)
+// OPENAI KEY
 // =====================================
 
-let OPENAI_API_KEY = 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
-
-localStorage.getItem('grammar_ai_key');
+let OPENAI_API_KEY = localStorage.getItem('grammar_ai_key');
 
 if(!OPENAI_API_KEY){
-
-  OPENAI_API_KEY = prompt(
-    'Entre ta clé OpenAI'
-  );
-
+  OPENAI_API_KEY = prompt("Entre ta clé OpenAI");
   if(OPENAI_API_KEY){
-
-    localStorage.setItem(
-      'grammar_ai_key',
-      OPENAI_API_KEY
-    );
+    localStorage.setItem('grammar_ai_key', OPENAI_API_KEY);
   }
 }
 
 if(!OPENAI_API_KEY){
-
-  alert('Clé API manquante');
-
+  alert("Clé API manquante");
   return;
 }
 
 // =====================================
-// CLEAN OLD
+// STOP IF ALREADY RUNNING
 // =====================================
 
 if(window.__GRAMMAR_AI_RUNNING__){
-
-  clearInterval(window.__GRAMMAR_AI_INTERVAL__);
-
-  document.getElementById('__grammar_ai_panel')?.remove();
-
   window.__GRAMMAR_AI_RUNNING__ = false;
-
+  document.getElementById('__grammar_ai_panel')?.remove();
+  console.log("🛑 STOP");
   return;
 }
 
 window.__GRAMMAR_AI_RUNNING__ = true;
 
 // =====================================
-// PANEL
+// UI
 // =====================================
 
 const panel = document.createElement('div');
-
-panel.id = '__grammar_ai_panel';
-
+panel.id = "__grammar_ai_panel";
 panel.style.cssText = `
-position:fixed;
-top:15px;
-right:15px;
-width:340px;
-background:#0f172a;
-color:white;
-z-index:999999999;
+position:fixed;top:15px;right:15px;width:300px;
+background:#0f172a;color:white;z-index:999999;
+padding:10px;border-radius:10px;font-family:Arial;
 border:2px solid #8b5cf6;
-border-radius:14px;
-font-family:Arial,sans-serif;
-box-shadow:0 10px 40px rgba(0,0,0,.6);
-overflow:hidden;
 `;
 
 panel.innerHTML = `
-<div style="padding:12px 14px;border-bottom:1px solid #1e293b;display:flex;justify-content:space-between;align-items:center;">
-<div style="font-weight:bold;color:#c4b5fd">GRAMMAR AI V3</div>
-<button id="__grammar_ai_close" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer">×</button>
-</div>
-
-<div style="padding:14px;">
-<div id="__grammar_ai_status" style="font-size:12px;color:#86efac;margin-bottom:10px">Prêt</div>
-<div id="__grammar_ai_question" style="font-size:12px;color:#cbd5e1;line-height:1.5;margin-bottom:12px;max-height:120px;overflow:auto"></div>
-
-<div style="display:flex;gap:8px;">
-<button id="__grammar_ai_start" style="flex:1;padding:10px;border:none;border-radius:8px;background:#7c3aed;color:white;cursor:pointer">DEMARRER</button>
-<button id="__grammar_ai_stop" style="flex:1;padding:10px;border:none;border-radius:8px;background:#334155;color:#cbd5e1;cursor:pointer">STOP</button>
-</div>
-</div>
+<div style="font-weight:bold;margin-bottom:8px;">GRAMMAR AI</div>
+<div id="status">Prêt</div>
+<button id="start">START</button>
+<button id="stop">STOP</button>
+<div id="text" style="margin-top:8px;font-size:12px;"></div>
 `;
 
 document.body.appendChild(panel);
 
-const statusEl = document.getElementById('__grammar_ai_status');
-const questionEl = document.getElementById('__grammar_ai_question');
+const status = document.getElementById("status");
+const textBox = document.getElementById("text");
 
-function status(txt,color='#86efac'){
-  statusEl.textContent = txt;
-  statusEl.style.color = color;
-}
-
-function sleep(ms){
-  return new Promise(r=>setTimeout(r,ms));
+function setStatus(t){
+  console.log("STATUS:", t);
+  status.innerText = t;
 }
 
 // =====================================
-// MEMORY
+// SIMPLE SLEEP
 // =====================================
 
-let memory = JSON.parse(
-  localStorage.getItem('grammar_ai_memory') || '{}'
-);
-
-function saveMemory(){
-  localStorage.setItem(
-    'grammar_ai_memory',
-    JSON.stringify(memory)
-  );
-}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // =====================================
-// NORMALIZE
+// DETECT TEXT (SIMPLIFIÉ MAIS STABLE)
 // =====================================
 
-function normalize(t){
-  return (t || '')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g,'')
-  .replace(/[.,!?;:()«»"']/g,'')
-  .replace(/\s+/g,' ')
-  .trim()
-  .toLowerCase();
-}
-
-// =====================================
-// DETECT QUESTION
-// =====================================
-
-function detectQuestion(){
-
-  const selectors = [
-    '.question',
-    '.sentence',
-    '.phrase',
-    '[class*=question]',
-    '[class*=sentence]',
-    '[class*=phrase]',
-    'div[tabindex="0"]',
-    'p',
-    'span',
-    'div'
-  ];
-
-  for(const sel of selectors){
-
-    const els = document.querySelectorAll(sel);
-
-    for(const el of els){
-
-      if(el.closest('#__grammar_ai_panel')) continue;
-
-      const txt = el.innerText?.trim();
-
-      if(
-        txt &&
-        txt.length > 15 &&
-        txt.length < 300 &&
-        /[a-zA-ZÀ-ÿ]/.test(txt)
-      ){
-        return txt;
-      }
-    }
-  }
-
-  return null;
-}
-
-// =====================================
-// BUTTONS
-// =====================================
-
-function getButton(text){
-
-  const els = document.querySelectorAll('button,div,span');
+function detectText(){
+  const els = document.querySelectorAll("p,span,div");
 
   for(const el of els){
-
-    const t = normalize(el.innerText);
-
-    if(t.includes(normalize(text))){
-      return el;
+    const t = el.innerText?.trim();
+    if(
+      t &&
+      t.length > 20 &&
+      t.length < 300 &&
+      /[a-zA-ZÀ-ÿ]/.test(t)
+    ){
+      return t;
     }
   }
-
   return null;
 }
 
-function realisticClick(el){
+// =====================================
+// CLICK WORD SIMPLE
+// =====================================
 
-  if(!el) return false;
+function clickWord(word){
+  const els = document.querySelectorAll("span,div,p");
 
-  const rect = el.getBoundingClientRect();
-
-  const x = rect.left + rect.width/2;
-  const y = rect.top + rect.height/2;
-
-  ['pointerdown','mousedown','pointerup','mouseup','click']
-  .forEach(type=>{
-    el.dispatchEvent(
-      new MouseEvent(type,{
-        bubbles:true,
-        cancelable:true,
-        clientX:x,
-        clientY:y
-      })
-    );
-  });
-
-  if(el.click) el.click();
-
-  return true;
+  for(const el of els){
+    if(el.innerText?.trim() === word){
+      el.click();
+      console.log("🖱 CLICK WORD:", word);
+      return true;
+    }
+  }
+  return false;
 }
 
-function clickButton(text){
-  const btn = getButton(text);
-  if(btn) return realisticClick(btn);
+// =====================================
+// CLICK BUTTON
+// =====================================
+
+function clickButton(txt){
+  const els = document.querySelectorAll("button");
+
+  for(const el of els){
+    if(el.innerText.toLowerCase().includes(txt.toLowerCase())){
+      el.click();
+      console.log("🔘 CLICK BUTTON:", txt);
+      return true;
+    }
+  }
   return false;
 }
 
@@ -229,276 +127,115 @@ function clickButton(text){
 // OPENAI
 // =====================================
 
-let apiBusy = false;
-
 async function askAI(prompt){
-
-  if(apiBusy) return null;
-
-  apiBusy = true;
 
   try{
 
-    status('Analyse IA...','#fbbf24');
+    setStatus("IA...");
 
-    const response = await fetch(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'Authorization':'Bearer ' + OPENAI_API_KEY
-        },
-        body:JSON.stringify({
-          model:'gpt-4o-mini',
-          temperature:0,
-          max_tokens:30,
-          messages:[
-            {
-              role:'system',
-              content:
-`Tu es un expert absolu en grammaire française.
+    const res = await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "Authorization":"Bearer " + OPENAI_API_KEY
+      },
+      body:JSON.stringify({
+        model:"gpt-4o-mini",
+        temperature:0,
+        messages:[
+          {
+            role:"system",
+            content:`Réponds uniquement JSON:
+{"wrong_word":"mot"} ou {"wrong_word":"NO_FAULT"}`
+          },
+          {
+            role:"user",
+            content:prompt
+          }
+        ]
+      })
+    });
 
-Tu réponds UNIQUEMENT en JSON.
-
-Format:
-{
-  "wrong_word":"mot"
-}
-
-ou
-
-{
-  "wrong_word":"NO_FAULT"
-}`
-            },
-            {
-              role:'user',
-              content:prompt
-            }
-          ]
-        })
-      }
-    );
-
-    if(response.status===401){
-      status('Clé API invalide','#f87171');
-      apiBusy=false;
-      return null;
-    }
-
-    if(response.status===429){
-      status('Limite API atteinte','#f87171');
-      apiBusy=false;
-      await sleep(15000);
-      return null;
-    }
-
-    if(!response.ok){
-      throw new Error('HTTP '+response.status);
-    }
-
-    const data = await response.json();
-
-    apiBusy = false;
-
-    return data.choices?.[0]?.message?.content || null;
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content;
 
   }catch(e){
-
-    apiBusy=false;
-    status('Erreur '+e.message,'#f87171');
+    console.log("API ERROR", e);
     return null;
   }
 }
 
 // =====================================
-// WORD CLICK
+// LOOP
 // =====================================
 
-function clickWord(word){
-
-  word = normalize(word);
-
-  const els = document.querySelectorAll(
-    'div[tabindex="0"],span,p,div'
-  );
-
-  for(const el of els){
-
-    if(el.closest('#__grammar_ai_panel')) continue;
-
-    const txt = normalize(el.innerText);
-
-    if(txt === word){
-      realisticClick(el);
-      return true;
-    }
-  }
-
-  return false;
-}
-
-// =====================================
-// VALIDATION IA
-// =====================================
-
-async function validateAnswer(sentence,badWord){
-
-  const check = await askAI(`
-Phrase:
-${sentence}
-
-Mot supposé fautif:
-${badWord}
-
-Réponds UNIQUEMENT:
-VALID
-ou
-INVALID
-`);
-
-  if(!check) return false;
-
-  return check.includes('VALID');
-}
-
-// =====================================
-// MAIN LOOP
-// =====================================
-
-let running=false;
-let lastSentence='';
-
-async function processPage(){
-
-  if(document.hidden) return;
-
-  const sentence = detectQuestion();
-
-  if(!sentence) return;
-
-  if(sentence===lastSentence) return;
-
-  lastSentence = sentence;
-
-  questionEl.textContent = sentence;
-
-  const normalizedSentence = normalize(sentence);
-
-  // MEMORY
-  for(const key in memory){
-
-    if(normalizedSentence.includes(key)){
-
-      const cached = memory[key];
-
-      if(cached === 'NO_FAULT'){
-        clickButton('pas de faute');
-        status('Mémoire utilisée');
-        return;
-      }
-
-      const ok = clickWord(cached);
-
-      if(ok){
-        status('Réponse mémoire');
-        await sleep(1500);
-        clickButton('valider');
-        return;
-      }
-    }
-  }
-
-  // IA
-  const ai = await askAI(`Phrase:\n${sentence}`);
-
-  if(!ai) return;
-
-  let result;
-
-  try{
-    result = JSON.parse(ai);
-  }catch{
-    status('Erreur JSON','#f87171');
-    return;
-  }
-
-  const badWord = result?.wrong_word;
-
-  if(typeof badWord !== 'string') return;
-
-  const valid = await validateAnswer(sentence,badWord);
-
-  if(!valid){
-    status('Validation IA échouée','#f87171');
-    return;
-  }
-
-  memory[normalizedSentence.slice(0,120)] = normalize(badWord);
-  saveMemory();
-
-  await sleep(800);
-
-  if(badWord === 'NO_FAULT'){
-    clickButton('pas de faute');
-    status('Aucune faute');
-    return;
-  }
-
-  const success = clickWord(badWord);
-
-  if(success){
-
-    status('Mot cliqué');
-    await sleep(1500);
-    clickButton('valider');
-
-  }else{
-    status('Mot introuvable','#f87171');
-  }
-}
+let running = false;
 
 async function loop(){
 
+  console.log("🔁 LOOP START");
+
   while(running){
 
-    try{
-      await processPage();
-    }catch(e){
-      console.log(e);
+    const sentence = detectText();
+
+    console.log("📝 SENTENCE:", sentence);
+
+    if(sentence){
+
+      textBox.innerText = sentence;
+
+      const ai = await askAI(sentence);
+
+      console.log("🤖 AI:", ai);
+
+      if(ai){
+
+        try{
+          const result = JSON.parse(ai);
+          const bad = result.wrong_word;
+
+          if(bad === "NO_FAULT"){
+            clickButton("pas de faute");
+            setStatus("OK");
+          }else{
+            const ok = clickWord(bad);
+            if(ok){
+              clickButton("valider");
+              setStatus("corrigé");
+            }else{
+              setStatus("mot introuvable");
+            }
+          }
+
+        }catch(e){
+          console.log("JSON ERROR");
+        }
+      }
     }
 
-    await sleep(12000);
+    await sleep(8000);
   }
+
+  console.log("🛑 LOOP STOP");
 }
 
 // =====================================
 // EVENTS
 // =====================================
 
-document.getElementById('__grammar_ai_start').onclick=()=>{
-
+document.getElementById("start").onclick = () => {
   if(running) return;
-
-  running=true;
-  status('Bot actif');
+  running = true;
+  setStatus("START");
   loop();
 };
 
-document.getElementById('__grammar_ai_stop').onclick=()=>{
-
-  running=false;
-  status('Bot arrêté','#cbd5e1');
+document.getElementById("stop").onclick = () => {
+  running = false;
+  setStatus("STOP");
 };
 
-document.getElementById('__grammar_ai_close').onclick=()=>{
-
-  running=false;
-  panel.remove();
-  window.__GRAMMAR_AI_RUNNING__=false;
-};
-
-status('Prêt');
+console.log("✅ LOADED");
 
 })();
