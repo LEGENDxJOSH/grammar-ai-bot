@@ -4,7 +4,8 @@ javascript:(async function(){
 // OPENAI API KEY (IMPORTANT)
 // =====================================
 
-let OPENAI_API_KEY =
+let OPENAI_API_KEY = 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
+
 localStorage.getItem('grammar_ai_key');
 
 if(!OPENAI_API_KEY){
