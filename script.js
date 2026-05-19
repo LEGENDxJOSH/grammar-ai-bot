@@ -1,6 +1,35 @@
 javascript:(async function(){
 
 // =====================================
+// OPENAI API KEY (IMPORTANT)
+// =====================================
+
+let OPENAI_API_KEY =
+localStorage.getItem('grammar_ai_key');
+
+if(!OPENAI_API_KEY){
+
+  OPENAI_API_KEY = prompt(
+    'Entre ta clé OpenAI'
+  );
+
+  if(OPENAI_API_KEY){
+
+    localStorage.setItem(
+      'grammar_ai_key',
+      OPENAI_API_KEY
+    );
+  }
+}
+
+if(!OPENAI_API_KEY){
+
+  alert('Clé API manquante');
+
+  return;
+}
+
+// =====================================
 // CLEAN OLD
 // =====================================
 
@@ -72,35 +101,6 @@ function sleep(ms){
 }
 
 // =====================================
-// API KEY
-// =====================================
-
-function getApiKey(){
-
-  let k = localStorage.getItem('grammar_ai_key');
-
-  if(!k){
-
-    k = prompt('Entre ta clé OpenAI');
-
-    if(k){
-      localStorage.setItem('grammar_ai_key',k);
-    }
-  }
-
-  return k;
-}
-
-const API_KEY = getApiKey();
-
-if(!API_KEY){
-
-  status('Clé API manquante','#f87171');
-
-  return;
-}
-
-// =====================================
 // MEMORY
 // =====================================
 
@@ -109,7 +109,6 @@ let memory = JSON.parse(
 );
 
 function saveMemory(){
-
   localStorage.setItem(
     'grammar_ai_memory',
     JSON.stringify(memory)
@@ -121,7 +120,6 @@ function saveMemory(){
 // =====================================
 
 function normalize(t){
-
   return (t || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g,'')
@@ -203,15 +201,8 @@ function realisticClick(el){
   const x = rect.left + rect.width/2;
   const y = rect.top + rect.height/2;
 
-  [
-    'pointerdown',
-    'mousedown',
-    'pointerup',
-    'mouseup',
-    'click'
-  ]
+  ['pointerdown','mousedown','pointerup','mouseup','click']
   .forEach(type=>{
-
     el.dispatchEvent(
       new MouseEvent(type,{
         bubbles:true,
@@ -222,21 +213,14 @@ function realisticClick(el){
     );
   });
 
-  if(el.click){
-    el.click();
-  }
+  if(el.click) el.click();
 
   return true;
 }
 
 function clickButton(text){
-
   const btn = getButton(text);
-
-  if(btn){
-    return realisticClick(btn);
-  }
-
+  if(btn) return realisticClick(btn);
   return false;
 }
 
@@ -262,7 +246,7 @@ async function askAI(prompt){
         method:'POST',
         headers:{
           'Content-Type':'application/json',
-          'Authorization':'Bearer '+API_KEY
+          'Authorization':'Bearer ' + OPENAI_API_KEY
         },
         body:JSON.stringify({
           model:'gpt-4o-mini',
@@ -322,9 +306,7 @@ ou
   }catch(e){
 
     apiBusy=false;
-
     status('Erreur '+e.message,'#f87171');
-
     return null;
   }
 }
@@ -348,9 +330,7 @@ function clickWord(word){
     const txt = normalize(el.innerText);
 
     if(txt === word){
-
       realisticClick(el);
-
       return true;
     }
   }
@@ -387,7 +367,6 @@ INVALID
 // =====================================
 
 let running=false;
-let busy=false;
 let lastSentence='';
 
 async function processPage(){
@@ -406,10 +385,7 @@ async function processPage(){
 
   const normalizedSentence = normalize(sentence);
 
-  // =========================
   // MEMORY
-  // =========================
-
   for(const key in memory){
 
     if(normalizedSentence.includes(key)){
@@ -417,100 +393,55 @@ async function processPage(){
       const cached = memory[key];
 
       if(cached === 'NO_FAULT'){
-
         clickButton('pas de faute');
-
         status('Mémoire utilisée');
-
         return;
       }
 
       const ok = clickWord(cached);
 
       if(ok){
-
         status('Réponse mémoire');
-
         await sleep(1500);
-
         clickButton('valider');
-
         return;
       }
     }
   }
 
-  // =========================
   // IA
-  // =========================
-
-  const ai = await askAI(`
-Phrase:
-${sentence}
-`);
+  const ai = await askAI(`Phrase:\n${sentence}`);
 
   if(!ai) return;
 
   let result;
 
   try{
-
     result = JSON.parse(ai);
-
-    if(
-      !result ||
-      typeof result.wrong_word !== 'string'
-    ){
-      return;
-    }
-
   }catch{
-
     status('Erreur JSON','#f87171');
-
     return;
   }
 
-  const badWord = result.wrong_word;
+  const badWord = result?.wrong_word;
 
-  // =========================
-  // VALIDATION
-  // =========================
+  if(typeof badWord !== 'string') return;
 
-  const valid = await validateAnswer(
-    sentence,
-    badWord
-  );
+  const valid = await validateAnswer(sentence,badWord);
 
   if(!valid){
-
     status('Validation IA échouée','#f87171');
-
     return;
   }
 
-  // =========================
-  // SAVE MEMORY
-  // =========================
-
-  memory[
-    normalizedSentence.slice(0,120)
-  ] = normalize(badWord);
-
+  memory[normalizedSentence.slice(0,120)] = normalize(badWord);
   saveMemory();
-
-  // =========================
-  // ACTION
-  // =========================
 
   await sleep(800);
 
   if(badWord === 'NO_FAULT'){
-
     clickButton('pas de faute');
-
     status('Aucune faute');
-
     return;
   }
 
@@ -519,13 +450,10 @@ ${sentence}
   if(success){
 
     status('Mot cliqué');
-
     await sleep(1500);
-
     clickButton('valider');
 
   }else{
-
     status('Mot introuvable','#f87171');
   }
 }
@@ -535,11 +463,8 @@ async function loop(){
   while(running){
 
     try{
-
       await processPage();
-
     }catch(e){
-
       console.log(e);
     }
 
@@ -548,7 +473,7 @@ async function loop(){
 }
 
 // =====================================
-// BUTTONS EVENTS
+// EVENTS
 // =====================================
 
 document.getElementById('__grammar_ai_start').onclick=()=>{
@@ -556,25 +481,20 @@ document.getElementById('__grammar_ai_start').onclick=()=>{
   if(running) return;
 
   running=true;
-
   status('Bot actif');
-
   loop();
 };
 
 document.getElementById('__grammar_ai_stop').onclick=()=>{
 
   running=false;
-
   status('Bot arrêté','#cbd5e1');
 };
 
 document.getElementById('__grammar_ai_close').onclick=()=>{
 
   running=false;
-
   panel.remove();
-
   window.__GRAMMAR_AI_RUNNING__=false;
 };
 
