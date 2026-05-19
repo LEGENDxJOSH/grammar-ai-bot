@@ -1,7 +1,19 @@
 javascript:(async function(){
 
 // =====================================
-// OPENAI KEY
+// STOP IF ALREADY RUNNING
+// =====================================
+
+if(window.__GRAMMAR_AI_RUNNING__){
+  window.__GRAMMAR_AI_RUNNING__ = false;
+  document.getElementById('__grammar_ai_panel')?.remove();
+  return;
+}
+
+window.__GRAMMAR_AI_RUNNING__ = false;
+
+// =====================================
+// API KEY
 // =====================================
 
 let OPENAI_API_KEY = localStorage.getItem('grammar_ai_key');
@@ -19,57 +31,57 @@ if(!OPENAI_API_KEY){
 }
 
 // =====================================
-// STOP IF ALREADY RUNNING
+// UI PANEL
 // =====================================
 
-if(window.__GRAMMAR_AI_RUNNING__){
-  window.__GRAMMAR_AI_RUNNING__ = false;
-  document.getElementById('__grammar_ai_panel')?.remove();
-  console.log("🛑 STOP");
-  return;
-}
-
-window.__GRAMMAR_AI_RUNNING__ = true;
-
-// =====================================
-// UI
-// =====================================
-
-const panel = document.createElement('div');
+const panel = document.createElement("div");
 panel.id = "__grammar_ai_panel";
 panel.style.cssText = `
-position:fixed;top:15px;right:15px;width:300px;
-background:#0f172a;color:white;z-index:999999;
-padding:10px;border-radius:10px;font-family:Arial;
+position:fixed;
+top:15px;
+right:15px;
+width:260px;
+background:#0f172a;
+color:white;
+z-index:999999999;
+padding:12px;
+border-radius:12px;
+font-family:Arial;
 border:2px solid #8b5cf6;
 `;
 
 panel.innerHTML = `
 <div style="font-weight:bold;margin-bottom:8px;">GRAMMAR AI</div>
-<div id="status">Prêt</div>
-<button id="start">START</button>
-<button id="stop">STOP</button>
-<div id="text" style="margin-top:8px;font-size:12px;"></div>
+
+<button id="on" style="width:100%;padding:8px;margin-bottom:5px;background:#22c55e;border:none;color:white;border-radius:6px;cursor:pointer">
+ON
+</button>
+
+<button id="off" style="width:100%;padding:8px;background:#ef4444;border:none;color:white;border-radius:6px;cursor:pointer">
+OFF
+</button>
+
+<div id="status" style="margin-top:8px;font-size:12px;">OFF</div>
+<div id="text" style="margin-top:6px;font-size:11px;color:#cbd5e1;"></div>
 `;
 
 document.body.appendChild(panel);
 
-const status = document.getElementById("status");
-const textBox = document.getElementById("text");
+const statusEl = document.getElementById("status");
+const textEl = document.getElementById("text");
 
 function setStatus(t){
-  console.log("STATUS:", t);
-  status.innerText = t;
+  statusEl.innerText = t;
 }
 
 // =====================================
-// SIMPLE SLEEP
+// UTIL
 // =====================================
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // =====================================
-// DETECT TEXT (SIMPLIFIÉ MAIS STABLE)
+// DETECT TEXT
 // =====================================
 
 function detectText(){
@@ -77,6 +89,7 @@ function detectText(){
 
   for(const el of els){
     const t = el.innerText?.trim();
+
     if(
       t &&
       t.length > 20 &&
@@ -90,33 +103,25 @@ function detectText(){
 }
 
 // =====================================
-// CLICK WORD SIMPLE
+// CLICK WORD / BUTTON
 // =====================================
 
 function clickWord(word){
   const els = document.querySelectorAll("span,div,p");
-
   for(const el of els){
     if(el.innerText?.trim() === word){
       el.click();
-      console.log("🖱 CLICK WORD:", word);
       return true;
     }
   }
   return false;
 }
 
-// =====================================
-// CLICK BUTTON
-// =====================================
-
-function clickButton(txt){
+function clickButton(text){
   const els = document.querySelectorAll("button");
-
   for(const el of els){
-    if(el.innerText.toLowerCase().includes(txt.toLowerCase())){
+    if(el.innerText.toLowerCase().includes(text.toLowerCase())){
       el.click();
-      console.log("🔘 CLICK BUTTON:", txt);
       return true;
     }
   }
@@ -131,8 +136,6 @@ async function askAI(prompt){
 
   try{
 
-    setStatus("IA...");
-
     const res = await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",
       headers:{
@@ -145,7 +148,7 @@ async function askAI(prompt){
         messages:[
           {
             role:"system",
-            content:`Réponds uniquement JSON:
+            content:`Réponds UNIQUEMENT en JSON:
 {"wrong_word":"mot"} ou {"wrong_word":"NO_FAULT"}`
           },
           {
@@ -160,7 +163,6 @@ async function askAI(prompt){
     return data.choices?.[0]?.message?.content;
 
   }catch(e){
-    console.log("API ERROR", e);
     return null;
   }
 }
@@ -173,25 +175,21 @@ let running = false;
 
 async function loop(){
 
-  console.log("🔁 LOOP START");
-
   while(running){
 
     const sentence = detectText();
 
-    console.log("📝 SENTENCE:", sentence);
-
     if(sentence){
 
-      textBox.innerText = sentence;
+      textEl.innerText = sentence;
+      setStatus("Analyse...");
 
       const ai = await askAI(sentence);
-
-      console.log("🤖 AI:", ai);
 
       if(ai){
 
         try{
+
           const result = JSON.parse(ai);
           const bad = result.wrong_word;
 
@@ -202,40 +200,40 @@ async function loop(){
             const ok = clickWord(bad);
             if(ok){
               clickButton("valider");
-              setStatus("corrigé");
+              setStatus("Corrigé");
             }else{
-              setStatus("mot introuvable");
+              setStatus("Mot introuvable");
             }
           }
 
-        }catch(e){
-          console.log("JSON ERROR");
+        }catch{
+          setStatus("Erreur IA");
         }
       }
     }
 
-    await sleep(8000);
+    await sleep(7000);
   }
 
-  console.log("🛑 LOOP STOP");
+  setStatus("OFF");
 }
 
 // =====================================
-// EVENTS
+// BUTTONS ON / OFF
 // =====================================
 
-document.getElementById("start").onclick = () => {
+document.getElementById("on").onclick = () => {
   if(running) return;
   running = true;
-  setStatus("START");
+  window.__GRAMMAR_AI_RUNNING__ = true;
+  setStatus("ON");
   loop();
 };
 
-document.getElementById("stop").onclick = () => {
+document.getElementById("off").onclick = () => {
   running = false;
-  setStatus("STOP");
+  window.__GRAMMAR_AI_RUNNING__ = false;
+  setStatus("OFF");
 };
-
-console.log("✅ LOADED");
 
 })();
